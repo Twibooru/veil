@@ -5,11 +5,6 @@ require 'openssl'
 require 'addressable/uri'
 
 class Veil
-  DEFAULT_REQUEST_HEADERS = {
-    'Via' => 'Veil Asset Proxy',
-    'User-Agent' => 'Veil Asset Proxy'
-  }.freeze
-
   DEFAULT_SECURITY_HEADERS = {
     'X-Frame-Options' => 'deny',
     'X-XSS-Protection' => '1; mode=block',
@@ -51,18 +46,16 @@ class Veil
 
   def process_url(request, url)
     headers_to_send = {
+      'Via' => @config[:via],
+      'User-Agent' => @config[:via],
       'Accept' => request.get_header('Accept') || 'image/*',
       'Accept-Encoding' => request.get_header('Accept-Encoding') || ''
-    }.merge(DEFAULT_REQUEST_HEADERS)
+    }
 
-    response =
-      begin
-        http_client.headers(headers_to_send)
-                   .follow(max_hops: 3)
-                   .get(url)
-      rescue HTTP::Redirector::TooManyRedirectsError
-        return four_oh_four 'Too many redirects'
-      end
+    response = http_client.timeout(@config[:socket_timeout])
+                          .headers(headers_to_send)
+                          .follow(max_hops: @config[:max_redirects])
+                          .get(url)
 
     return four_oh_four("Bad status code #{response.status}") unless response.status.success?
 
@@ -89,6 +82,10 @@ class Veil
     end
 
     [200, headers_to_return, content_to_return]
+  rescue HTTP::Redirector::TooManyRedirectsError => e
+    four_oh_four "Too many redirects: #{e.inspect}"
+  rescue HTTP::TimeoutError => e
+    four_oh_four "Timed out: #{e.inspect}"
   rescue StandardError => e
     four_oh_four "Internal server error: #{e.inspect}"
   end
