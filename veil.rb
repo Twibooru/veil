@@ -1,10 +1,12 @@
 # frozen_string_literal: true
 require 'cgi'
+require 'date'
 require 'http'
 require 'openssl'
 require 'addressable/uri'
 
 class Veil
+  # Default security-related headers that are sent in responses to the client.
   DEFAULT_SECURITY_HEADERS = {
     'X-Frame-Options' => 'deny',
     'X-XSS-Protection' => '1; mode=block',
@@ -13,20 +15,24 @@ class Veil
     'Strict-Transport-Security' => 'max-age=31536000; includeSubDomains'
   }.freeze
 
+  # Header names that are copied from the upstream response to the client response, if present.
   PASSTHROUGH_HEADERS = %w[content-type etag expires last-modified transfer-encoding content-encoding].freeze
 
+  # Response that's sent to the client for a 404 or other error
   FOUR_OH_FOUR_RESPONSE = [
     404,
     DEFAULT_SECURITY_HEADERS.merge({ 'Content-Type' => 'text/plain', 'Cache-Control' => 'no-cache, no-store, private, must-revalidate' }).freeze,
     ['Not Found'].freeze
   ].freeze
 
+  # Response that's sent for a GET to /, or non-GET requests
   INDEX_RESPONSE = [
     200,
     DEFAULT_SECURITY_HEADERS.merge({ 'Content-Type' => 'text/plain' }).freeze,
     ['hwhat'].freeze
   ].freeze
 
+  # Response that's sent for a GET to /favicon.ico. Unsure why this is a thing, but Camo did it.
   FAVICON_RESPONSE = [
     200,
     DEFAULT_SECURITY_HEADERS.merge({ 'Content-Type' => 'text/plain' }).freeze,
@@ -66,17 +72,7 @@ class Veil
   private
 
   def process_url(request, url)
-    headers_to_send = {
-      'Via' => @config[:via],
-      'User-Agent' => @config[:via],
-      'Accept' => request.get_header('Accept') || 'image/*',
-      'Accept-Encoding' => request.get_header('Accept-Encoding') || ''
-    }
-
-    response = http_client.timeout(@config[:socket_timeout])
-                          .headers(headers_to_send)
-                          .follow(max_hops: @config[:max_redirects])
-                          .get(url)
+    response = perform_upstream_request request, url
 
     return four_oh_four("Bad status code #{response.status}") unless response.status.success?
 
@@ -91,6 +87,7 @@ class Veil
 
     content_length = 0
 
+    # Keep reading chunks of the upstream response until the end, bailing out if we read more than the limit.
     loop do
       chunk = response.body.readpartial
       break if chunk.nil?
@@ -111,8 +108,23 @@ class Veil
     four_oh_four "Internal server error: #{e.inspect}"
   end
 
+  # request = the Rack request from the client
+  def perform_upstream_request(request, url)
+    headers_to_send = {
+      'Via' => @config[:via],
+      'User-Agent' => @config[:via],
+      'Accept' => request.get_header('Accept') || 'image/*',
+      'Accept-Encoding' => request.get_header('Accept-Encoding') || ''
+    }
+
+    http_client.timeout(@config[:socket_timeout])
+               .headers(headers_to_send)
+               .follow(max_hops: @config[:max_redirects])
+               .get(url)
+  end
+
   def four_oh_four(reason)
-    $stderr.puts(reason)
+    $stderr.puts("[#{DateTime.now}] #{reason}") if @config[:logging] == 'error'
 
     FOUR_OH_FOUR_RESPONSE
   end
