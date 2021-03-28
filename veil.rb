@@ -20,6 +20,13 @@ class Veil
 
   def initialize(config)
     @config = config
+
+    if @config[:proxy]
+      proxy_uri = Addressable::URI.parse @config[:proxy]
+      default_port = proxy_uri.scheme == 'https' ? 443 : 80
+
+      @proxy = [proxy_uri.host, proxy_uri.port || default_port, proxy_uri.user, proxy_uri.password]
+    end
   end
 
   def call(env)
@@ -50,9 +57,9 @@ class Veil
 
     response =
       begin
-        HTTP.headers(headers_to_send)
-            .follow(max_hops: 3)
-            .get(url)
+        http_client.headers(headers_to_send)
+                   .follow(max_hops: 3)
+                   .get(url)
       rescue HTTP::Redirector::TooManyRedirectsError
         return four_oh_four 'Too many redirects'
       end
@@ -94,5 +101,9 @@ class Veil
 
   def hwhat
     [200, { 'Content-Type' => 'text/plain' }, ['hwhat']]
+  end
+
+  def http_client
+    (@proxy ? HTTP.via(*@proxy) : HTTP)
   end
 end
