@@ -115,10 +115,6 @@ class Veil
     FOUR_OH_FOUR_RESPONSE
   end
 
-  def favicon
-    [200, {  }, ['ok']]
-  end
-
   def http_client
     (@proxy ? HTTP.via(*@proxy) : HTTP)
   end
