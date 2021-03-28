@@ -13,6 +13,8 @@ class Veil
     'Strict-Transport-Security' => 'max-age=31536000; includeSubDomains'
   }.freeze
 
+  PASSTHROUGH_HEADERS = %w[content-type etag expires last-modified transfer-encoding content-encoding].freeze
+
   FOUR_OH_FOUR_RESPONSE = [
     404,
     DEFAULT_SECURITY_HEADERS.merge({ 'Content-Type' => 'text/plain', 'Cache-Control' => 'no-cache, no-store, private, must-revalidate' }).freeze,
@@ -83,7 +85,7 @@ class Veil
       'Cache-Control' => response['cache-control'] || 'public, max-age=31536000'
     }.merge(DEFAULT_SECURITY_HEADERS)
 
-    %w[content-type etag expires last-modified transfer-encoding content-encoding].each do |h|
+    PASSTHROUGH_HEADERS.each do |h|
       headers_to_return[h] = response[h] if response[h]
     end
 
