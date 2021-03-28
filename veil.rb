@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 require 'cgi'
-require 'httparty'
+require 'http'
 require 'openssl'
+require 'addressable/uri'
 
 class Veil
   DEFAULT_REQUEST_HEADERS = {
@@ -19,12 +20,6 @@ class Veil
 
   def initialize(config)
     @config = config
-
-    if @config[:proxy]
-      proxy_host, proxy_port = @config[:proxy].split ':'
-
-      HTTParty::Basement.http_proxy(proxy_host, proxy_port.to_i, nil, nil)
-    end
   end
 
   def call(env)
@@ -48,43 +43,45 @@ class Veil
   private
 
   def process_url(request, url)
-    redirects = 0
-    response = []
-
     headers_to_send = {
       'Accept' => request.get_header('Accept') || 'image/*',
       'Accept-Encoding' => request.get_header('Accept-Encoding') || ''
     }.merge(DEFAULT_REQUEST_HEADERS)
 
-    headers_to_return = nil
-
-    HTTParty.get(url, headers: headers_to_send, stream_body: true) do |fragment|
-      if [301, 302].include? fragment.code
-        redirects += 1
-        return four_oh_four('Too many redirects') if redirects > 3
-      elsif fragment.code != 200
-        return four_oh_four("Bad status code #{fragment.code}")
+    response =
+      begin
+        HTTP.headers(headers_to_send)
+            .follow(max_hops: 3)
+            .get(url)
+      rescue HTTP::Redirector::TooManyRedirectsError
+        return four_oh_four 'Too many redirects'
       end
 
-      # Haven't set the headers yet, only want to do this once.
-      if headers_to_return.nil?
-        if fragment.http_response['content-length'].to_i > @config[:length_limit]
-          return four_oh_four('Content-Length limit exceeded')
-        end
+    return four_oh_four("Bad status code #{response.status}") unless response.status.success?
 
-        headers_to_return = {
-          'Cache-Control' => fragment.http_response['cache-control'] || 'public, max-age=31536000'
-        }.merge(DEFAULT_SECURITY_HEADERS)
+    content_to_return = []
+    headers_to_return = {
+      'Cache-Control' => response['cache-control'] || 'public, max-age=31536000'
+    }.merge(DEFAULT_SECURITY_HEADERS)
 
-        %w[content-type etag expires last-modified transfer-encoding content-encoding].each do |h|
-          headers_to_return[h] = fragment.http_response[h] if fragment.http_response[h]
-        end
-      end
-
-      response << fragment
+    %w[content-type etag expires last-modified transfer-encoding content-encoding].each do |h|
+      headers_to_return[h] = response[h] if response[h]
     end
 
-    [200, headers_to_return, response]
+    content_length = 0
+
+    loop do
+      chunk = response.body.readpartial
+      break if chunk.nil?
+
+      content_length += chunk.length
+
+      return four_oh_four('Content-Length limit exceeded') if content_length > @config[:length_limit]
+
+      content_to_return << chunk
+    end
+
+    [200, headers_to_return, content_to_return]
   rescue StandardError => e
     four_oh_four "Internal server error: #{e.inspect}"
   end
