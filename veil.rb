@@ -13,6 +13,24 @@ class Veil
     'Strict-Transport-Security' => 'max-age=31536000; includeSubDomains'
   }.freeze
 
+  FOUR_OH_FOUR_RESPONSE = [
+    404,
+    DEFAULT_SECURITY_HEADERS.merge({ 'Content-Type' => 'text/plain', 'Cache-Control' => 'no-cache, no-store, private, must-revalidate' }).freeze,
+    ['Not Found'].freeze
+  ].freeze
+
+  INDEX_RESPONSE = [
+    200,
+    DEFAULT_SECURITY_HEADERS.merge({ 'Content-Type' => 'text/plain' }).freeze,
+    ['hwhat'].freeze
+  ].freeze
+
+  FAVICON_RESPONSE = [
+    200,
+    DEFAULT_SECURITY_HEADERS.merge({ 'Content-Type' => 'text/plain' }).freeze,
+    ['ok'].freeze
+  ].freeze
+
   def initialize(config)
     @config = config
 
@@ -27,7 +45,8 @@ class Veil
   def call(env)
     request = Rack::Request.new env
 
-    return hwhat if !request.get? || request.path == '/'
+    return INDEX_RESPONSE   if !request.get? || request.path == '/'
+    return FAVICON_RESPONSE if request.path == '/favicon.ico'
 
     provided_digest = request.path.delete_prefix '/'
     provided_url    = request.params['url']
@@ -93,11 +112,11 @@ class Veil
   def four_oh_four(reason)
     $stderr.puts(reason)
 
-    [404, { 'Content-Type' => 'text/plain' }, ['Not Found']]
+    FOUR_OH_FOUR_RESPONSE
   end
 
-  def hwhat
-    [200, { 'Content-Type' => 'text/plain' }, ['hwhat']]
+  def favicon
+    [200, {  }, ['ok']]
   end
 
   def http_client
