@@ -1,2 +1,2 @@
 #!/bin/bash
-bundle exec puma Config.ru
+bundle exec falcon serve -n 1 -b http://127.0.0.1:9292
