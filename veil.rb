@@ -41,6 +41,7 @@ class Veil
 
   def initialize(config)
     @config = config
+    @mime_type_whitelist = File.readlines('mime_types', chomp: true)
 
     if @config[:proxy]
       proxy_uri = Addressable::URI.parse @config[:proxy]
@@ -75,6 +76,10 @@ class Veil
     response = perform_upstream_request request, url
 
     return four_oh_four("Bad status code #{response.status}") unless response.status.success?
+
+    mime_type = response['content-type'].split(';')[0].downcase
+
+    return four_oh_four("Bad response MIME type #{mime_type}") unless @mime_type_whitelist.include? mime_type
 
     content_to_return = []
     headers_to_return = {
