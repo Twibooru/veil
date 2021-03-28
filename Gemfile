@@ -3,5 +3,5 @@ source 'https://rubygems.org'
 
 gem 'puma'
 gem 'rack'
-gem 'addressable'
 gem 'http'
+gem 'addressable'
