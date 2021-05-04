@@ -5,6 +5,8 @@ require 'http'
 require 'openssl'
 require 'addressable/uri'
 
+require_relative 'http_ext'
+
 class Veil
   # Default security-related headers that are sent in responses to the client.
   DEFAULT_SECURITY_HEADERS = {
@@ -93,10 +95,7 @@ class Veil
     content_length = 0
 
     # Keep reading chunks of the upstream response until the end, bailing out if we read more than the limit.
-    loop do
-      chunk = response.body.readpartial
-      break if chunk.nil?
-
+    response.stream_body do |chunk| # see http_ext.rb
       content_length += chunk.length
 
       return four_oh_four('Content-Length limit exceeded') if content_length > @config[:length_limit]
